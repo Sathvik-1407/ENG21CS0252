@@ -1,53 +1,74 @@
 const express = require('express');
 const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
-const port = 4000;
+const PORT = process.env.PORT || 3000;
 
-const windowSize = 10;
-let windowNumbers = [];
+const WINDOW_SIZE = 10;
+let WINDOW = [];
 
-const fetchNumbers = async (qualifier) => {
+const API_TOKEN = process.env.API_TOKEN;
+
+const fetchNumbersFromServer = async (numberId) => {
+    const headers = {
+        'Authorization': `Bearer ${API_TOKEN}`
+    };
+
     try {
-        const response = await axios.get(`http://2theta*0.244*0.56*0.144/test/${qualifier}`);
+        let response;
+        switch (numberId) {
+            case 'p':
+                response = await axios.get('http://20.244.56.144/test/primes', { headers, timeout: 500 });
+                break;
+            case 'e':
+                response = await axios.get('http://20.244.56.144/test/even', { headers, timeout: 500 });
+                break;
+            case 'f':
+                response = await axios.get('http://20.244.56.144/test/fibo', { headers, timeout: 500 });
+                break;
+            case 'r':
+                response = await axios.get('http://20.244.56.144/test/rand', { headers, timeout: 500 });
+                break;
+            default:
+                return [];
+        }
+
         return response.data.numbers || [];
     } catch (error) {
-        console.error('Failed to fetch numbers from the test server:', error);
+        console.error(`Failed to fetch data from server: ${error}`);
         return [];
     }
 };
 
-const calculateAverage = (numbers) => {
-    if (!numbers.length) return 0;
-    const sum = numbers.reduce((acc, num) => acc + num, 0);
-    return sum / numbers.length;
-};
+app.get('/numbers/:numberId', async (req, res) => {
+    const numberId = req.params.numberId;
+    const numbers = await fetchNumbersFromServer(numberId);
 
-app.get('/numbers/:qualifier', async (req, res) => {
-    const qualifier = req.params.qualifier;
-    
-    const fetchedNumbers = await fetchNumbers(qualifier);
+    const previousState = [...WINDOW];
 
-
-    windowNumbers.push(...fetchedNumbers);
-    windowNumbers = [...new Set(windowNumbers)];
-    if (windowNumbers.length > windowSize) {
-        windowNumbers = windowNumbers.slice(-windowSize);
+    for (const number of numbers) {
+        if (!WINDOW.includes(number)) {
+            if (WINDOW.length >= WINDOW_SIZE) {
+                WINDOW.shift();
+            }
+            WINDOW.push(number);
+        }
     }
 
-    const avg = calculateAverage(windowNumbers);
+    const currentState = [...WINDOW];
+    const average = currentState.length ? currentState.reduce((acc, curr) => acc + curr, 0) / currentState.length : 0;
 
     const response = {
-        numbers: fetchedNumbers,
-        windowPrevState: windowNumbers.slice(0, windowNumbers.length - fetchedNumbers.length),
-        windowCurrState: windowNumbers.slice(-fetchedNumbers.length),
-        avg: avg.toFixed(2)
+        numbers,
+        windowPrevState: previousState,
+        windowCurrState: currentState,
+        average
     };
 
     res.json(response);
 });
 
-
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
